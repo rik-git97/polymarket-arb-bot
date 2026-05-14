@@ -1,0 +1,15 @@
+{
+  "trading": {
+    "simulation": true,
+    "asset": "btc",
+    "timeframe_minutes": 15,
+    "check_interval_ms": 1000,
+    "dump_move_threshold": 0.15,
+    "dump_sum_target": 0.95,
+    "dump_window_seconds": 120,
+    "stop_loss_max_wait_seconds": 300,
+    "stop_loss_percentage": 0.2,
+    "shares_per_leg": 10.0,
+    "fee_rate": 0.02
+  }
+}
