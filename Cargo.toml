@@ -16,9 +16,7 @@ axum = { version = "0.8" }
 name = "polymarket_arb_bot"
 path = "src/main.rs"
 
-[[bin]]
-name = "dashboard"
-path = "src/bin/dashboard.rs"
+
 
 [profile.release]
 opt-level = 3

@@ -6,9 +6,11 @@ pub struct PriceSnapshot {
     pub yes_ask: f64,
     pub no_bid: f64,
     pub no_ask: f64,
+    pub yes_last: Option<f64>,
+    pub no_last: Option<f64>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Trade {
     pub trade_type: TradeType,
     pub side: Side,
@@ -18,7 +20,7 @@ pub struct Trade {
     pub elapsed_sec: f64,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum TradeType {
     Leg1,
     Leg2Hedge,
@@ -26,7 +28,7 @@ pub enum TradeType {
     Leg2Final,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Side {
     Yes,
     No,

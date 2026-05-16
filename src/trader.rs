@@ -1,6 +1,35 @@
 use crate::models::*;
 use crate::config::TradingConfig;
 
+/// Derive a meaningful price for a token from its best bid/ask.
+/// Returns None when both bid and ask are zero (no liquidity at all).
+fn reliable_price(bid: f64, ask: f64) -> Option<f64> {
+    match (bid > 0.0, ask > 0.0) {
+        (true, true) => Some((bid + ask) / 2.0),
+        (true, false) => Some(bid),
+        (false, true) => Some(ask),
+        (false, false) => None,
+    }
+}
+
+/// Compute fair Yes/No prices from a snapshot.
+/// Prefers last_trade_price when available, then bid/ask midpoint.
+/// If one side lacks data, it is inferred from the other (p_yes + p_no = 1).
+pub fn compute_prices(
+    yes_bid: f64, yes_ask: f64, no_bid: f64, no_ask: f64,
+    yes_last: Option<f64>, no_last: Option<f64>,
+) -> (f64, f64) {
+    // Prefer last_trade_price over midpoint
+    let yes_prior = yes_last.or_else(|| reliable_price(yes_bid, yes_ask));
+    let no_prior = no_last.or_else(|| reliable_price(no_bid, no_ask));
+    match (yes_prior, no_prior) {
+        (Some(y), Some(n)) => (y, n),
+        (Some(y), None) => (y, (1.0 - y).max(0.0).min(1.0)),
+        (None, Some(n)) => ((1.0 - n).max(0.0).min(1.0), n),
+        (None, None) => (0.5, 0.5),
+    }
+}
+
 pub struct DumpHedgeTrader {
     pub state: BotState,
     pub leg1_price: Option<f64>,
@@ -67,8 +96,9 @@ impl DumpHedgeTrader {
                     return None;
                 }
 
-                self.yes_history.push(snap.yes_ask);
-                self.no_history.push(snap.no_ask);
+                let (yes_price, no_price) = compute_prices(snap.yes_bid, snap.yes_ask, snap.no_bid, snap.no_ask, snap.yes_last, snap.no_last);
+                self.yes_history.push(yes_price);
+                self.no_history.push(no_price);
                 if self.yes_history.len() > 5 {
                     self.yes_history.remove(0);
                     self.no_history.remove(0);
@@ -77,15 +107,15 @@ impl DumpHedgeTrader {
                 if self.yes_history.len() >= 3 {
                     let old_y = self.yes_history[0];
                     let old_n = self.no_history[0];
-                    let cur_y = snap.yes_ask;
-                    let cur_n = snap.no_ask;
+                    let cur_y = yes_price;
+                    let cur_n = no_price;
 
-                    let y_drop = if old_y > 0.01 {
+                    let y_drop = if old_y > 0.001 {
                         (old_y - cur_y) / old_y
                     } else {
                         0.0
                     };
-                    let n_drop = if old_n > 0.01 {
+                    let n_drop = if old_n > 0.001 {
                         (old_n - cur_n) / old_n
                     } else {
                         0.0
@@ -127,12 +157,13 @@ impl DumpHedgeTrader {
 
             BotState::Leg1Placed => {
                 let wait = e - self.leg1_time.unwrap();
-                let opp_ask = if self.leg1_side.as_ref().unwrap() == &Side::Yes {
-                    snap.no_ask
+                let (yes_price, no_price) = compute_prices(snap.yes_bid, snap.yes_ask, snap.no_bid, snap.no_ask, snap.yes_last, snap.no_last);
+                let opp_price = if self.leg1_side.as_ref().unwrap() == &Side::Yes {
+                    no_price
                 } else {
-                    snap.yes_ask
+                    yes_price
                 };
-                let combined = self.leg1_price.unwrap() + opp_ask;
+                let combined = self.leg1_price.unwrap() + opp_price;
                 let hedge_side = if self.leg1_side.as_ref().unwrap() == &Side::Yes {
                     Side::No
                 } else {
@@ -142,18 +173,18 @@ impl DumpHedgeTrader {
 
                 if combined <= self.sum_target {
                     self.state = BotState::Hedging;
-                    self.leg2_price = Some(opp_ask);
+                    self.leg2_price = Some(opp_price);
                     self.leg2_type = Some(TradeType::Leg2Hedge);
-                    let cost = opp_ask * self.shares;
+                    let cost = opp_price * self.shares;
                     self.trades.push(Trade {
                         trade_type: TradeType::Leg2Hedge,
                         side: hedge_side.clone(),
-                        price: opp_ask,
+                        price: opp_price,
                         shares: self.shares,
                         cost,
                         elapsed_sec: e,
                     });
-                    return Some(format!("LEG2 HEDGE {:?} @ {:.3} (combined {:.3})", hedge_side, opp_ask, combined));
+                    return Some(format!("LEG2 HEDGE {:?} @ {:.3} (combined {:.3})", hedge_side, opp_price, combined));
                 }
 
                 if wait >= self.stop_wait || remaining <= 15.0 {
@@ -163,18 +194,18 @@ impl DumpHedgeTrader {
                         TradeType::Leg2Final
                     };
                     self.state = BotState::Hedging;
-                    self.leg2_price = Some(opp_ask);
+                    self.leg2_price = Some(opp_price);
                     self.leg2_type = Some(typ.clone());
-                    let cost = opp_ask * self.shares;
+                    let cost = opp_price * self.shares;
                     self.trades.push(Trade {
                         trade_type: typ.clone(),
                         side: hedge_side.clone(),
-                        price: opp_ask,
+                        price: opp_price,
                         shares: self.shares,
                         cost,
                         elapsed_sec: e,
                     });
-                    return Some(format!("LEG2 {:?} {:?} @ {:.3} (combined {:.3})", typ, hedge_side, opp_ask, combined));
+                    return Some(format!("LEG2 {:?} {:?} @ {:.3} (combined {:.3})", typ, hedge_side, opp_price, combined));
                 }
             }
 

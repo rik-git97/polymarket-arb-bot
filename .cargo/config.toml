@@ -1,3 +1,0 @@
-[target.x86_64-pc-windows-msvc]
-linker = "C:\\Users\\RIMI0000\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\x86_64-pc-windows-msvc\\bin\\rust-lld.exe"
-
